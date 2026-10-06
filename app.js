@@ -4,7 +4,7 @@ const CONTROL="$CONTROL/dynamic-security/v1", RESPONSE=CONTROL+"/response";
 const ACL_TYPES=["publishClientSend","publishClientReceive","subscribeLiteral","subscribePattern","unsubscribeLiteral","unsubscribePattern"];
 const DEFAULT_TOPIC_FILTERS=["#","$SYS/#"];
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-let mqttClient=null, activeConn=null, pending=[], trafficLog=[], logRenderPending=false, topicRenderPending=false, selectedTopic=null;
+let mqttClient=null, activeConn=null, pending=[], trafficLog=[], mutedLogTopics=new Set(), logRenderPending=false, topicRenderPending=false, selectedTopic=null;
 let topicFilters=loadTopicFilters(), topicMessages=new Map(), state={clients:[],groups:[],roles:[],defaults:{},anonymousGroup:null};
 
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
@@ -16,11 +16,13 @@ function saveTopicFilters(){localStorage.setItem("dynsec.topicFilters",JSON.stri
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(16).slice(2)}
 function setStatus(s,t){$("#statusDot").className="dot "+s;$("#statusText").textContent=t;$("#disconnectBtn").disabled=s!=="on"}
 function readablePayload(payload){const text=typeof payload==="string"?payload:payload.toString();try{return JSON.stringify(JSON.parse(text),null,2)}catch{return text}}
-function logTraffic(direction,topic,payload,meta={}){trafficLog.unshift({id:uid(),direction,topic,payload:readablePayload(payload),qos:meta.qos??0,retain:!!meta.retain,time:new Date(),connection:activeConn?.name||""});if(trafficLog.length>500)trafficLog.length=500;scheduleLogRender()}
+function logTraffic(direction,topic,payload,meta={}){if(mutedLogTopics.has(topic))return;trafficLog.push({id:uid(),direction,topic,payload:readablePayload(payload),qos:meta.qos??0,retain:!!meta.retain,time:new Date(),connection:activeConn?.name||""});if(trafficLog.length>500)trafficLog.shift();scheduleLogRender()}
 function scheduleLogRender(){if(logRenderPending)return;logRenderPending=true;requestAnimationFrame(()=>{logRenderPending=false;renderTrafficLog()})}
-function renderTrafficLog(){const list=$("#trafficLog");if(!list)return;list.innerHTML=trafficLog.length?trafficLog.map(entry=>`<article class="log-entry"><div class="log-head"><span class="log-direction ${entry.direction}">${entry.direction==="out"?"PUBLISH":"RECEIVED"}</span><time datetime="${entry.time.toISOString()}">${esc(entry.time.toLocaleTimeString())}</time><span class="tag">QoS ${entry.qos}</span>${entry.retain?'<span class="tag">Retained</span>':""}<span class="log-topic">${esc(entry.connection?entry.connection+" · ":"")}${esc(entry.topic)}</span><button class="ghost" data-copy-log="${entry.id}">Copy payload</button></div><pre>${esc(entry.payload)}</pre></article>`).join(""):'<div class="panel muted">No MQTT traffic yet.</div>';$$('[data-copy-log]').forEach(button=>button.onclick=()=>copyLogPayload(button.dataset.copyLog))}
+function scrollLogToBottom(){const list=$("#trafficLog");if(list)list.scrollTop=list.scrollHeight}
+function renderTrafficLog(){const list=$("#trafficLog");if(!list)return;const previousScroll=list.scrollTop,autoScroll=$("#logAutoScroll").checked;list.innerHTML=trafficLog.length?trafficLog.map(entry=>`<article class="log-entry"><div class="log-head"><span class="log-direction ${entry.direction}">${entry.direction==="out"?"PUBLISH":"RECEIVED"}</span><time datetime="${entry.time.toISOString()}">${esc(entry.time.toLocaleTimeString())}</time><span class="tag">QoS ${entry.qos}</span>${entry.retain?'<span class="tag">Retained</span>':""}<span class="log-topic">${esc(entry.connection?entry.connection+" · ":"")}${esc(entry.topic)}</span><div class="log-actions"><button class="ghost" data-copy-log="${entry.id}">Copy payload</button><button class="ghost" data-mute-log="${entry.id}">${mutedLogTopics.has(entry.topic)?"Unmute topic":"Mute topic"}</button></div></div><pre>${esc(entry.payload)}</pre></article>`).join(""):'<div class="panel muted">No MQTT traffic yet.</div>';$$('[data-copy-log]').forEach(button=>button.onclick=()=>copyLogPayload(button.dataset.copyLog));$$('[data-mute-log]').forEach(button=>button.onclick=()=>toggleMuteLogTopic(button.dataset.muteLog));$("#unmuteAllBtn").disabled=mutedLogTopics.size===0;$("#unmuteAllBtn").textContent=mutedLogTopics.size?`Unmute all (${mutedLogTopics.size})`:"Unmute all";autoScroll?scrollLogToBottom():list.scrollTop=previousScroll}
 async function copyText(text){try{await navigator.clipboard.writeText(text);toast("Payload copied")}catch{const area=document.createElement("textarea");area.value=text;area.style.position="fixed";area.style.opacity="0";document.body.append(area);area.select();const copied=document.execCommand("copy");area.remove();toast(copied?"Payload copied":"Could not copy payload",!copied)}}
 function copyLogPayload(id){const entry=trafficLog.find(item=>item.id===id);if(entry)copyText(entry.payload)}
+function toggleMuteLogTopic(id){const entry=trafficLog.find(item=>item.id===id);if(!entry)return;if(mutedLogTopics.has(entry.topic)){mutedLogTopics.delete(entry.topic);toast(`Unmuted ${entry.topic}`)}else{mutedLogTopics.add(entry.topic);toast(`Muted ${entry.topic}`)}renderTrafficLog()}
 
 function validTopicFilter(filter){if(!filter||filter.includes("\0"))return false;const levels=filter.split("/");return levels.every((level,index)=>{if(level.includes("#"))return level==="#"&&index===levels.length-1;if(level.includes("+"))return level==="+";return true})}
 function validPublishTopic(topic){return !!topic&&!topic.includes("\0")&&!topic.includes("#")&&!topic.includes("+")}
@@ -92,7 +94,7 @@ async function refreshAll(){try{await Promise.all([loadClients(),loadGroups(),lo
 async function loadClients(){const r=await dynsec({command:"listClients",verbose:true,count:-1,offset:0});let d=firstData(r,"listClients");state.clients=d.clients||[]}
 async function loadGroups(){const r=await dynsec({command:"listGroups",verbose:true,count:-1,offset:0});let d=firstData(r,"listGroups");state.groups=d.groups||[]}
 async function loadRoles(){const r=await dynsec({command:"listRoles",verbose:true,count:-1,offset:0});let d=firstData(r,"listRoles");state.roles=d.roles||[]}
-async function loadDefaults(){const r=await dynsec({command:"getDefaultACLAccess"});state.defaults=firstData(r,"getDefaultACLAccess")}
+async function loadDefaults(){const r=await dynsec({command:"getDefaultACLAccess"}),d=firstData(r,"getDefaultACLAccess");state.defaults=Array.isArray(d.acls)?Object.fromEntries(d.acls.map(acl=>[acl.acltype,acl.allow])):d}
 async function loadAnonymous(){const r=await dynsec({command:"getAnonymousGroup"});let d=firstData(r,"getAnonymousGroup");state.anonymousGroup=d.groupname??null}
 function renderAll(){renderClients();renderGroups();renderRoles();renderDefaults();renderAnonymous()}
 function badges(items,key){return (items||[]).map(x=>`<span class="tag">${esc(x[key])}${x.priority!==undefined?" ("+x.priority+")":""}</span>`).join("")||'<span class="muted">None</span>'}
@@ -161,10 +163,12 @@ async function deleteRole(r){if(!confirm(`Delete role "${r}"?`))return;try{await
 $("#addClientBtn").onclick=()=>editClient();$("#addGroupBtn").onclick=()=>editGroup();$("#addRoleBtn").onclick=()=>editRole();
 $$("[data-refresh]").forEach(b=>b.onclick=async()=>{try{let x=b.dataset.refresh;if(x==="clients")await loadClients();if(x==="groups")await loadGroups();if(x==="roles")await loadRoles();if(x==="defaults"){await Promise.all([loadDefaults(),loadAnonymous()])}renderAll();toast("Refreshed")}catch(e){toast(e.message,true)}});
 
-$$(".tabs button").forEach(b=>b.onclick=()=>{$$(".tabs button").forEach(x=>x.classList.toggle("active",x===b));$$(".tab").forEach(t=>t.classList.toggle("active",t.id===b.dataset.tab))});
+$$(".tabs button").forEach(b=>b.onclick=()=>{$$(".tabs button").forEach(x=>x.classList.toggle("active",x===b));$$(".tab").forEach(t=>t.classList.toggle("active",t.id===b.dataset.tab));if(b.dataset.tab==="log"&&$("#logAutoScroll").checked)requestAnimationFrame(scrollLogToBottom)});
 $("#formatRawBtn").onclick=()=>{try{$("#rawCommand").value=JSON.stringify(JSON.parse($("#rawCommand").value),null,2)}catch(e){toast("Invalid JSON: "+e.message,true)}};
 $("#sendRawBtn").onclick=async()=>{try{let obj=JSON.parse($("#rawCommand").value);if(!obj.commands||!Array.isArray(obj.commands))throw new Error('Top-level object must contain a "commands" array');let r=await dynsec(obj.commands);$("#rawResponse").textContent=JSON.stringify(r,null,2)}catch(e){$("#rawResponse").textContent=e.message;toast(e.message,true)}};
 $("#clearLogBtn").onclick=()=>{trafficLog=[];renderTrafficLog()};
+$("#logAutoScroll").onchange=()=>{if($("#logAutoScroll").checked)scrollLogToBottom()};
+$("#unmuteAllBtn").onclick=()=>{mutedLogTopics.clear();renderTrafficLog();toast("All log topics unmuted")};
 $("#addSubscriptionBtn").onclick=addTopicFilter;
 $("#subscriptionFilter").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();addTopicFilter()}});
 $("#clearTopicsBtn").onclick=()=>{topicMessages.clear();selectedTopic=null;renderTopicBrowser()};

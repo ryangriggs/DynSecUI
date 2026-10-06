@@ -143,7 +143,11 @@
       <div id="log" class="tab">
         <div class="toolbar">
           <div><h2>MQTT Traffic Log</h2><span class="muted">Commands published and responses received during this browser session</span></div>
-          <button id="clearLogBtn" class="ghost">Clear log</button>
+          <div class="log-controls">
+            <label><input id="logAutoScroll" type="checkbox" checked> Autoscroll</label>
+            <button id="unmuteAllBtn" class="ghost" disabled>Unmute all</button>
+            <button id="clearLogBtn" class="ghost">Clear log</button>
+          </div>
         </div>
         <p class="hint">Payloads may contain passwords or other sensitive values. Each Copy button copies the payload so it can be pasted into Raw API and edited.</p>
         <div id="trafficLog"><div class="panel muted">No MQTT traffic yet.</div></div>

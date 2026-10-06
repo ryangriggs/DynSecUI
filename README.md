@@ -30,7 +30,7 @@ A static browser UI for Mosquitto's Dynamic Security plugin.
 - Live MQTT topic browser with configurable subscriptions (defaulting to `#` and `$SYS/#`).
 - Topic publishing with QoS 0/1 and retained-message support.
 - Raw API panel for sending any Dynamic Security command not represented by the forms.
-- Session traffic log for inspecting and copying every published command and subscribed response.
+- Session traffic log with chronological autoscroll, payload copying, and per-topic muting.
 
 ## Run
 
