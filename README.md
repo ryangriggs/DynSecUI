@@ -27,6 +27,8 @@ A static browser UI for Mosquitto's Dynamic Security plugin.
   - complete ACL editing
 - Default ACL access management.
 - Anonymous group management.
+- Live MQTT topic browser with configurable subscriptions (defaulting to `#` and `$SYS/#`).
+- Topic publishing with QoS 0/1 and retained-message support.
 - Raw API panel for sending any Dynamic Security command not represented by the forms.
 - Session traffic log for inspecting and copying every published command and subscribed response.
 
@@ -80,6 +82,13 @@ No package manager or build step is required.
 The administration account must be permitted to publish to and receive/subscribe from:
 
     $CONTROL/dynamic-security/#
+
+To use the topic browser, the account must also have subscribe and receive permissions for its configured topic filters. The defaults are:
+
+    #
+    $SYS/#
+
+Publishing from the topic browser requires publish permission for the destination topic.
 
 Commands are published to:
 

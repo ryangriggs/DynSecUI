@@ -41,6 +41,7 @@
         <button data-tab="groups">Groups</button>
         <button data-tab="roles">Roles</button>
         <button data-tab="defaults">Defaults</button>
+        <button data-tab="topics">Topics</button>
         <button data-tab="raw">Raw API</button>
         <button data-tab="log">Log</button>
       </nav>
@@ -82,6 +83,39 @@
             <button id="saveAnonymousBtn">Save</button>
           </div>
           <p class="hint">Choose the group automatically assigned to anonymous clients, or select None.</p>
+        </div>
+      </div>
+
+      <div id="topics" class="tab">
+        <div class="toolbar">
+          <div><h2>Topic Browser</h2><span class="muted">Browse messages received from configurable MQTT subscriptions</span></div>
+          <button id="clearTopicsBtn" class="ghost">Clear topics</button>
+        </div>
+        <div class="panel subscriptions-panel">
+          <div class="subhead"><strong>Subscriptions</strong><span class="muted">MQTT topic filters</span></div>
+          <div id="topicSubscriptions" class="subscription-list"></div>
+          <div class="subscription-add">
+            <input id="subscriptionFilter" placeholder="sensors/+/temperature" aria-label="Topic filter">
+            <button id="addSubscriptionBtn">Subscribe</button>
+          </div>
+        </div>
+        <div class="topic-browser">
+          <section class="topic-tree-panel">
+            <div class="topic-panel-head"><strong>Topics</strong><span id="topicCount" class="muted">0 discovered</span></div>
+            <div id="topicTree" class="topic-tree"><p class="muted">Waiting for messages…</p></div>
+          </section>
+          <section class="topic-detail-panel">
+            <div id="topicDetail"><p class="muted">Select a discovered topic to inspect its latest message.</p></div>
+          </section>
+        </div>
+        <div class="publish-bar">
+          <div class="publish-fields">
+            <label>Topic<input id="publishTopic" placeholder="example/topic"></label>
+            <label>QoS<select id="publishQos"><option value="0">0</option><option value="1">1</option></select></label>
+            <label class="retain-option"><input id="publishRetain" type="checkbox"> Retain</label>
+          </div>
+          <label>Payload<textarea id="publishPayload" rows="3" placeholder="Message payload"></textarea></label>
+          <button id="publishTopicBtn">Publish</button>
         </div>
       </div>
 

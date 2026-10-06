@@ -2,19 +2,38 @@
 "use strict";
 const CONTROL="$CONTROL/dynamic-security/v1", RESPONSE=CONTROL+"/response";
 const ACL_TYPES=["publishClientSend","publishClientReceive","subscribeLiteral","subscribePattern","unsubscribeLiteral","unsubscribePattern"];
+const DEFAULT_TOPIC_FILTERS=["#","$SYS/#"];
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-let mqttClient=null, activeConn=null, pending=[], trafficLog=[], state={clients:[],groups:[],roles:[],defaults:{},anonymousGroup:null};
+let mqttClient=null, activeConn=null, pending=[], trafficLog=[], logRenderPending=false, topicRenderPending=false, selectedTopic=null;
+let topicFilters=loadTopicFilters(), topicMessages=new Map(), state={clients:[],groups:[],roles:[],defaults:{},anonymousGroup:null};
 
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function toast(msg,err=false){const e=$("#toast");e.textContent=msg;e.className=err?"show error":"show";clearTimeout(e._t);e._t=setTimeout(()=>e.className="",3500);}
 function saved(){try{return JSON.parse(localStorage.getItem("dynsec.connections")||"[]")}catch{return []}}
 function saveConns(v){localStorage.setItem("dynsec.connections",JSON.stringify(v))}
+function loadTopicFilters(){try{const value=localStorage.getItem("dynsec.topicFilters");if(value===null)return [...DEFAULT_TOPIC_FILTERS];const filters=JSON.parse(value);return Array.isArray(filters)?filters:[...DEFAULT_TOPIC_FILTERS]}catch{return [...DEFAULT_TOPIC_FILTERS]}}
+function saveTopicFilters(){localStorage.setItem("dynsec.topicFilters",JSON.stringify(topicFilters))}
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(16).slice(2)}
 function setStatus(s,t){$("#statusDot").className="dot "+s;$("#statusText").textContent=t;$("#disconnectBtn").disabled=s!=="on"}
 function readablePayload(payload){const text=typeof payload==="string"?payload:payload.toString();try{return JSON.stringify(JSON.parse(text),null,2)}catch{return text}}
-function logTraffic(direction,topic,payload){trafficLog.unshift({id:uid(),direction,topic,payload:readablePayload(payload),time:new Date(),connection:activeConn?.name||""});if(trafficLog.length>500)trafficLog.length=500;renderTrafficLog()}
-function renderTrafficLog(){const list=$("#trafficLog");if(!list)return;list.innerHTML=trafficLog.length?trafficLog.map(entry=>`<article class="log-entry"><div class="log-head"><span class="log-direction ${entry.direction}">${entry.direction==="out"?"PUBLISH":"RECEIVED"}</span><time datetime="${entry.time.toISOString()}">${esc(entry.time.toLocaleTimeString())}</time><span class="log-topic">${esc(entry.connection?entry.connection+" · ":"")}${esc(entry.topic)}</span><button class="ghost" data-copy-log="${entry.id}">Copy payload</button></div><pre>${esc(entry.payload)}</pre></article>`).join(""):'<div class="panel muted">No MQTT traffic yet.</div>';$$('[data-copy-log]').forEach(button=>button.onclick=()=>copyLogPayload(button.dataset.copyLog))}
-async function copyLogPayload(id){const entry=trafficLog.find(item=>item.id===id);if(!entry)return;try{await navigator.clipboard.writeText(entry.payload);toast("Payload copied")}catch{const area=document.createElement("textarea");area.value=entry.payload;area.style.position="fixed";area.style.opacity="0";document.body.append(area);area.select();const copied=document.execCommand("copy");area.remove();toast(copied?"Payload copied":"Could not copy payload",!copied)}}
+function logTraffic(direction,topic,payload,meta={}){trafficLog.unshift({id:uid(),direction,topic,payload:readablePayload(payload),qos:meta.qos??0,retain:!!meta.retain,time:new Date(),connection:activeConn?.name||""});if(trafficLog.length>500)trafficLog.length=500;scheduleLogRender()}
+function scheduleLogRender(){if(logRenderPending)return;logRenderPending=true;requestAnimationFrame(()=>{logRenderPending=false;renderTrafficLog()})}
+function renderTrafficLog(){const list=$("#trafficLog");if(!list)return;list.innerHTML=trafficLog.length?trafficLog.map(entry=>`<article class="log-entry"><div class="log-head"><span class="log-direction ${entry.direction}">${entry.direction==="out"?"PUBLISH":"RECEIVED"}</span><time datetime="${entry.time.toISOString()}">${esc(entry.time.toLocaleTimeString())}</time><span class="tag">QoS ${entry.qos}</span>${entry.retain?'<span class="tag">Retained</span>':""}<span class="log-topic">${esc(entry.connection?entry.connection+" · ":"")}${esc(entry.topic)}</span><button class="ghost" data-copy-log="${entry.id}">Copy payload</button></div><pre>${esc(entry.payload)}</pre></article>`).join(""):'<div class="panel muted">No MQTT traffic yet.</div>';$$('[data-copy-log]').forEach(button=>button.onclick=()=>copyLogPayload(button.dataset.copyLog))}
+async function copyText(text){try{await navigator.clipboard.writeText(text);toast("Payload copied")}catch{const area=document.createElement("textarea");area.value=text;area.style.position="fixed";area.style.opacity="0";document.body.append(area);area.select();const copied=document.execCommand("copy");area.remove();toast(copied?"Payload copied":"Could not copy payload",!copied)}}
+function copyLogPayload(id){const entry=trafficLog.find(item=>item.id===id);if(entry)copyText(entry.payload)}
+
+function validTopicFilter(filter){if(!filter||filter.includes("\0"))return false;const levels=filter.split("/");return levels.every((level,index)=>{if(level.includes("#"))return level==="#"&&index===levels.length-1;if(level.includes("+"))return level==="+";return true})}
+function validPublishTopic(topic){return !!topic&&!topic.includes("\0")&&!topic.includes("#")&&!topic.includes("+")}
+function renderSubscriptions(){$("#topicSubscriptions").innerHTML=topicFilters.length?topicFilters.map(filter=>`<span class="subscription-chip">${esc(filter)}<button class="danger" data-remove-subscription="${esc(filter)}" title="Unsubscribe" aria-label="Unsubscribe from ${esc(filter)}">×</button></span>`).join(""):'<span class="muted">No topic filters. Add one below to begin browsing.</span>';$$('[data-remove-subscription]').forEach(button=>button.onclick=()=>removeTopicFilter(button.dataset.removeSubscription))}
+function subscribeTopicFilter(filter,notify=false){if(!mqttClient?.connected)return;mqttClient.subscribe(filter,{qos:0},err=>{if(err){toast(`Could not subscribe to ${filter}: ${err.message}`,true);return}if(notify)toast(`Subscribed to ${filter}`)})}
+function subscribeTopicFilters(){topicFilters.forEach(filter=>subscribeTopicFilter(filter))}
+function addTopicFilter(){const input=$("#subscriptionFilter"),filter=input.value.trim();if(!validTopicFilter(filter)){toast("Enter a valid MQTT topic filter",true);return}if(topicFilters.includes(filter)){toast("That topic filter is already subscribed",true);return}topicFilters.push(filter);saveTopicFilters();renderSubscriptions();subscribeTopicFilter(filter,true);input.value=""}
+function removeTopicFilter(filter){topicFilters=topicFilters.filter(item=>item!==filter);saveTopicFilters();renderSubscriptions();if(mqttClient?.connected)mqttClient.unsubscribe(filter,err=>toast(err?`Could not unsubscribe from ${filter}: ${err.message}`:`Unsubscribed from ${filter}`,!!err))}
+function recordTopicMessage(topic,payload,packet={}){const entry={topic,payload:readablePayload(payload),qos:packet.qos??0,retain:!!packet.retain,time:new Date()};topicMessages.delete(topic);topicMessages.set(topic,entry);while(topicMessages.size>1000)topicMessages.delete(topicMessages.keys().next().value);scheduleTopicRender()}
+function scheduleTopicRender(){if(topicRenderPending)return;topicRenderPending=true;requestAnimationFrame(()=>{topicRenderPending=false;renderTopicBrowser()})}
+function renderTopicBrowser(){renderTopicTree();renderTopicDetail()}
+function renderTopicTree(){const tree=$("#topicTree");$("#topicCount").textContent=`${topicMessages.size} discovered`;if(!topicMessages.size){tree.innerHTML='<p class="muted">Waiting for messages…</p>';return}const root={children:new Map()};[...topicMessages.values()].sort((a,b)=>a.topic.localeCompare(b.topic)).forEach(entry=>{let node=root;entry.topic.split("/").forEach(part=>{if(!node.children.has(part))node.children.set(part,{children:new Map(),entry:null});node=node.children.get(part)});node.entry=entry});const branch=node=>`<ul>${[...node.children.entries()].map(([name,child])=>`<li>${child.entry?`<button class="topic-node ${selectedTopic===child.entry.topic?"selected":""}" data-select-topic="${esc(child.entry.topic)}"><span class="topic-pulse"></span>${esc(name||"(empty)")}</button>`:`<div class="topic-node branch">${esc(name||"(empty)")}</div>`}${child.children.size?branch(child):""}</li>`).join("")}</ul>`;tree.innerHTML=branch(root);$$('[data-select-topic]').forEach(button=>button.onclick=()=>{selectedTopic=button.dataset.selectTopic;$("#publishTopic").value=selectedTopic;renderTopicBrowser()})}
+function renderTopicDetail(){const detail=$("#topicDetail"),entry=topicMessages.get(selectedTopic);if(!entry){detail.innerHTML='<p class="muted">Select a discovered topic to inspect its latest message.</p>';return}detail.innerHTML=`<div class="topic-detail-head"><div><strong>Latest message</strong><div class="topic-detail-name">${esc(entry.topic)}</div></div><button id="copyTopicPayload" class="ghost">Copy payload</button></div><div class="topic-meta"><span class="tag">${esc(entry.time.toLocaleString())}</span><span class="tag">QoS ${entry.qos}</span>${entry.retain?'<span class="tag">Retained</span>':""}</div><pre>${esc(entry.payload)}</pre>`;$("#copyTopicPayload").onclick=()=>copyText(entry.payload)}
 
 function renderConnections(){
  const list=$("#connectionList"), cs=saved();
@@ -41,11 +60,12 @@ function promptConnect(id){activeConn=saved().find(c=>c.id===id);if(!activeConn)
 $("#passwordForm").addEventListener("submit",e=>{if(e.submitter?.value==="cancel")return;e.preventDefault();const password=$("#connectPassword").value;activeConn.password=password;saveConns(saved().map(c=>c.id===activeConn.id?activeConn:c));$("#passwordDialog").close();connect(password)});
 function connect(password){
  if(mqttClient) try{mqttClient.end(true)}catch{}
+ topicMessages.clear();selectedTopic=null;renderTopicBrowser();
  setStatus("wait","Connecting…");
  const o={username:activeConn.username||undefined,password:password||undefined,clientId:activeConn.clientId||("dynsec-web-"+Math.random().toString(16).slice(2,10)),protocolVersion:activeConn.protocolVersion||4,clean:true,reconnectPeriod:0,connectTimeout:10000};
  try{mqttClient=mqtt.connect(activeConn.url,o)}catch(e){setStatus("off","Disconnected");toast(e.message,true);return}
- mqttClient.on("connect",()=>mqttClient.subscribe(RESPONSE,{qos:1},err=>{if(err){toast("Failed to subscribe to DynSec responses: "+err.message,true);return}setStatus("on",activeConn.name);$("#welcome").classList.add("hidden");$("#app").classList.remove("hidden");renderConnections();refreshAll()}));
- mqttClient.on("message",(topic,payload)=>{logTraffic("in",topic,payload);if(topic!==RESPONSE)return;let obj;try{obj=JSON.parse(payload.toString())}catch{return}handleResponse(obj)});
+ mqttClient.on("connect",()=>mqttClient.subscribe(RESPONSE,{qos:1},err=>{if(err){toast("Failed to subscribe to DynSec responses: "+err.message,true);return}setStatus("on",activeConn.name);$("#welcome").classList.add("hidden");$("#app").classList.remove("hidden");renderConnections();subscribeTopicFilters();refreshAll()}));
+ mqttClient.on("message",(topic,payload,packet)=>{recordTopicMessage(topic,payload,packet);logTraffic("in",topic,payload,{qos:packet?.qos,retain:packet?.retain});if(topic!==RESPONSE)return;let obj;try{obj=JSON.parse(payload.toString())}catch{return}handleResponse(obj)});
  mqttClient.on("error",e=>toast("MQTT: "+e.message,true));
  mqttClient.on("close",()=>{if($("#statusDot").classList.contains("on"))toast("Broker connection closed",true);setStatus("off","Disconnected")});
 }
@@ -57,7 +77,7 @@ function dynsec(commands,timeout=8000){
  return new Promise((resolve,reject)=>{
    const timer=setTimeout(()=>{pending=pending.filter(p=>p.token!==token);reject(new Error("Timed out waiting for Dynamic Security response"))},timeout);
    pending.push({token,resolve,reject,timer});
-   const payload=JSON.stringify({commands:cmds});logTraffic("out",CONTROL,payload);mqttClient.publish(CONTROL,payload,{qos:1},err=>{if(err){clearTimeout(timer);pending=pending.filter(p=>p.token!==token);reject(err)}})
+   const payload=JSON.stringify({commands:cmds});logTraffic("out",CONTROL,payload,{qos:1,retain:false});mqttClient.publish(CONTROL,payload,{qos:1},err=>{if(err){clearTimeout(timer);pending=pending.filter(p=>p.token!==token);reject(err)}})
  });
 }
 function handleResponse(obj){
@@ -145,6 +165,10 @@ $$(".tabs button").forEach(b=>b.onclick=()=>{$$(".tabs button").forEach(x=>x.cla
 $("#formatRawBtn").onclick=()=>{try{$("#rawCommand").value=JSON.stringify(JSON.parse($("#rawCommand").value),null,2)}catch(e){toast("Invalid JSON: "+e.message,true)}};
 $("#sendRawBtn").onclick=async()=>{try{let obj=JSON.parse($("#rawCommand").value);if(!obj.commands||!Array.isArray(obj.commands))throw new Error('Top-level object must contain a "commands" array');let r=await dynsec(obj.commands);$("#rawResponse").textContent=JSON.stringify(r,null,2)}catch(e){$("#rawResponse").textContent=e.message;toast(e.message,true)}};
 $("#clearLogBtn").onclick=()=>{trafficLog=[];renderTrafficLog()};
+$("#addSubscriptionBtn").onclick=addTopicFilter;
+$("#subscriptionFilter").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();addTopicFilter()}});
+$("#clearTopicsBtn").onclick=()=>{topicMessages.clear();selectedTopic=null;renderTopicBrowser()};
+$("#publishTopicBtn").onclick=()=>{if(!mqttClient?.connected){toast("Not connected",true);return}const topic=$("#publishTopic").value.trim(),payload=$("#publishPayload").value,qos=+$("#publishQos").value,retain=$("#publishRetain").checked;if(!validPublishTopic(topic)){toast("Enter a valid publish topic without wildcards",true);return}logTraffic("out",topic,payload,{qos,retain});mqttClient.publish(topic,payload,{qos,retain},err=>toast(err?"Publish failed: "+err.message:"Message published",!!err))};
 
-renderConnections();setStatus("off","Disconnected");
+renderConnections();renderSubscriptions();renderTopicBrowser();setStatus("off","Disconnected");
 })();
