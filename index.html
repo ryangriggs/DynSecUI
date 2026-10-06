@@ -181,7 +181,7 @@
       </select>
     </label>
     <div class="dialog-actions">
-      <button value="cancel" class="ghost" formnovalidate>Cancel</button>
+      <button type="button" class="ghost" data-close-dialog="connDialog">Cancel</button>
       <button id="saveConnBtn" value="default">Save</button>
     </div>
   </form>
@@ -193,7 +193,7 @@
     <div id="passwordConnectionLabel" class="muted"></div>
     <label>Password <input id="connectPassword" type="password" autocomplete="current-password"></label>
     <div class="dialog-actions">
-      <button value="cancel" class="ghost" formnovalidate>Cancel</button>
+      <button type="button" class="ghost" data-close-dialog="passwordDialog">Cancel</button>
       <button id="doConnectBtn" value="default">Connect</button>
     </div>
   </form>
@@ -203,7 +203,7 @@
   <form method="dialog" id="editorForm">
     <div class="toolbar compact">
       <h2 id="editorTitle">Edit</h2>
-      <button value="cancel" class="ghost" formnovalidate>Close</button>
+      <button type="button" class="ghost dialog-close-x" data-close-dialog="editorDialog" aria-label="Close dialog" title="Close">×</button>
     </div>
     <div id="editorBody"></div>
   </form>

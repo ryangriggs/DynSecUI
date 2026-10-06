@@ -1,6 +1,6 @@
 (() => {
 "use strict";
-const APP_VERSION="1.0.3";
+const APP_VERSION="1.0.4";
 const CONTROL="$CONTROL/dynamic-security/v1", RESPONSE=CONTROL+"/response";
 const ACL_TYPES=["publishClientSend","publishClientReceive","subscribeLiteral","subscribePattern","unsubscribeLiteral","unsubscribePattern"];
 const DEFAULT_TOPIC_FILTERS=["#","$SYS/#"];
@@ -53,6 +53,7 @@ function editConnection(id){
  $("#connDialogTitle").textContent=id?"Edit connection":"New connection";$("#connId").value=c.id;$("#connName").value=c.name;$("#connUrl").value=c.url;$("#connUsername").value=c.username||"";$("#connPassword").value=c.password||"";$("#connClientId").value=c.clientId||"";$("#connVersion").value=String(c.protocolVersion||4);$("#connDialog").showModal();
 }
 $("#newConnBtn").onclick=()=>editConnection();
+document.addEventListener("click",event=>{const button=event.target.closest?.("[data-close-dialog]");if(button)$("#"+button.dataset.closeDialog).close()});
 $("#connForm").addEventListener("submit",e=>{
  if(e.submitter?.value==="cancel")return;
  e.preventDefault();let url=$("#connUrl").value.trim();
@@ -124,7 +125,7 @@ function renderAnonymous(){
 $("#saveAnonymousBtn").onclick=async()=>{try{await dynsec({command:"setAnonymousGroup",groupname:$("#anonymousGroup").value||null});toast("Anonymous group updated");await loadAnonymous();renderAnonymous()}catch(e){toast(e.message,true)}};
 
 function optionRows(items,nameKey,selected){
- return items.map(i=>{let name=i[nameKey],x=(selected||[]).find(v=>v[nameKey]===name);return `<div class="listrow"><label><input type="checkbox" data-name="${esc(name)}" ${x?"checked":""}> ${esc(name)}</label><input type="number" data-priority="${esc(name)}" value="${x?.priority??-1}" min="-1" max="100000"><span></span></div>`}).join("");
+ return items.map((item,index)=>{let name=item[nameKey],x=(selected||[]).find(v=>v[nameKey]===name),id=`option-${nameKey}-${index}`;return `<div class="listrow"><input id="${id}" class="listcheck" type="checkbox" data-name="${esc(name)}" ${x?"checked":""}><label for="${id}" class="listname">${esc(name)}</label><input type="number" data-priority="${esc(name)}" value="${x?.priority??-1}" min="-1" max="100000" aria-label="Priority for ${esc(name)}"></div>`}).join("");
 }
 async function editClient(username){
  let isNew=!username,c=isNew?{username:"",clientid:"",textname:"",textdescription:"",disabled:false,groups:[],roles:[]}:(await dynsec({command:"getClient",username})).responses.find(x=>x.command==="getClient").data.client;
@@ -136,7 +137,7 @@ async function editClient(username){
  <label><input id="eDisabled" type="checkbox" ${c.disabled?"checked":""} style="width:auto"> Disabled</label>
  <div class="subpanel"><div class="subhead"><strong>Groups</strong><span class="muted">priority</span></div><div id="clientGroups">${optionRows(state.groups,"groupname",c.groups)}</div></div>
  <div class="subpanel"><div class="subhead"><strong>Direct roles</strong><span class="muted">priority</span></div><div id="clientRoles">${optionRows(state.roles,"rolename",c.roles)}</div></div>
- <div class="dialog-actions"><button id="saveClient">Save</button></div>`;
+ <div class="dialog-actions"><button type="button" class="ghost" data-close-dialog="editorDialog">Cancel</button><button id="saveClient">Save</button></div>`;
  $("#editorDialog").showModal();
  $("#saveClient").onclick=async e=>{e.preventDefault();let groups=[...$("#clientGroups").querySelectorAll("input[type=checkbox]:checked")].map(x=>({groupname:x.dataset.name,priority:+$("#clientGroups").querySelector(`[data-priority="${CSS.escape(x.dataset.name)}"]`).value}));let roles=[...$("#clientRoles").querySelectorAll("input[type=checkbox]:checked")].map(x=>({rolename:x.dataset.name,priority:+$("#clientRoles").querySelector(`[data-priority="${CSS.escape(x.dataset.name)}"]`).value}));let cmd={command:isNew?"createClient":"modifyClient",username:$("#eUser").value.trim(),clientid:$("#eClientId").value,textname:$("#eTextName").value,textdescription:$("#eDesc").value,groups,roles};if($("#ePassword").value)cmd.password=$("#ePassword").value;try{await dynsec(cmd);if(!isNew){await dynsec({command:$("#eDisabled").checked?"disableClient":"enableClient",username})}else if($("#eDisabled").checked){await dynsec({command:"disableClient",username:cmd.username})}toast("Client saved");$("#editorDialog").close();await loadClients();renderClients()}catch(ex){toast(ex.message,true)}}
 }
@@ -145,7 +146,7 @@ async function deleteClient(u){if(!confirm(`Delete client "${u}"? Connected clie
 async function editGroup(name){
  let isNew=!name,g=isNew?{groupname:"",textname:"",textdescription:"",roles:[]}:(await dynsec({command:"getGroup",groupname:name})).responses.find(x=>x.command==="getGroup").data.group;
  $("#editorTitle").textContent=isNew?"Create group":"Edit group: "+name;
- $("#editorBody").innerHTML=`<div class="grid2"><label>Group name<input id="eGroup" value="${esc(g.groupname)}" ${isNew?"":"disabled"}></label><label>Text name<input id="eTextName" value="${esc(g.textname||"")}"></label></div><label>Text description<textarea id="eDesc">${esc(g.textdescription||"")}</textarea></label><div class="subpanel"><div class="subhead"><strong>Roles</strong><span class="muted">priority</span></div><div id="groupRoles">${optionRows(state.roles,"rolename",g.roles)}</div></div><div class="dialog-actions"><button id="saveGroup">Save</button></div>`;
+ $("#editorBody").innerHTML=`<div class="grid2"><label>Group name<input id="eGroup" value="${esc(g.groupname)}" ${isNew?"":"disabled"}></label><label>Text name<input id="eTextName" value="${esc(g.textname||"")}"></label></div><label>Text description<textarea id="eDesc">${esc(g.textdescription||"")}</textarea></label><div class="subpanel"><div class="subhead"><strong>Roles</strong><span class="muted">priority</span></div><div id="groupRoles">${optionRows(state.roles,"rolename",g.roles)}</div></div><div class="dialog-actions"><button type="button" class="ghost" data-close-dialog="editorDialog">Cancel</button><button id="saveGroup">Save</button></div>`;
  $("#editorDialog").showModal();$("#saveGroup").onclick=async e=>{e.preventDefault();let roles=[...$("#groupRoles").querySelectorAll("input[type=checkbox]:checked")].map(x=>({rolename:x.dataset.name,priority:+$("#groupRoles").querySelector(`[data-priority="${CSS.escape(x.dataset.name)}"]`).value}));let cmd={command:isNew?"createGroup":"modifyGroup",groupname:$("#eGroup").value.trim(),textname:$("#eTextName").value,textdescription:$("#eDesc").value,roles};try{await dynsec(cmd);toast("Group saved");$("#editorDialog").close();await Promise.all([loadGroups(),loadClients()]);renderGroups();renderClients()}catch(ex){toast(ex.message,true)}}
 }
 async function deleteGroup(g){if(!confirm(`Delete group "${g}"?`))return;try{await dynsec({command:"deleteGroup",groupname:g});toast("Group deleted");await Promise.all([loadGroups(),loadClients()]);renderAll()}catch(e){toast(e.message,true)}}
@@ -156,7 +157,7 @@ function aclRows(acls){
 async function editRole(name){
  let isNew=!name,r=isNew?{rolename:"",textname:"",textdescription:"",acls:[]}:(await dynsec({command:"getRole",rolename:name})).responses.find(x=>x.command==="getRole").data.role;
  $("#editorTitle").textContent=isNew?"Create role":"Edit role: "+name;
- $("#editorBody").innerHTML=`<div class="grid2"><label>Role name<input id="eRole" value="${esc(r.rolename)}" ${isNew?"":"disabled"}></label><label>Text name<input id="eTextName" value="${esc(r.textname||"")}"></label></div><label>Text description<textarea id="eDesc">${esc(r.textdescription||"")}</textarea></label><div class="subpanel"><div class="subhead"><strong>ACLs</strong><button id="addAcl" class="ghost">+ ACL</button></div><div id="aclRows">${aclRows(r.acls)}</div></div><div class="dialog-actions"><button id="saveRole">Save</button></div>`;
+ $("#editorBody").innerHTML=`<div class="grid2"><label>Role name<input id="eRole" value="${esc(r.rolename)}" ${isNew?"":"disabled"}></label><label>Text name<input id="eTextName" value="${esc(r.textname||"")}"></label></div><label>Text description<textarea id="eDesc">${esc(r.textdescription||"")}</textarea></label><div class="subpanel"><div class="subhead"><strong>ACLs</strong><button id="addAcl" class="ghost">+ ACL</button></div><div id="aclRows">${aclRows(r.acls)}</div></div><div class="dialog-actions"><button type="button" class="ghost" data-close-dialog="editorDialog">Cancel</button><button id="saveRole">Save</button></div>`;
  $("#editorDialog").showModal();bindAclRemove();$("#addAcl").onclick=e=>{e.preventDefault();$("#aclRows").insertAdjacentHTML("beforeend",aclRows([{acltype:"publishClientSend",topic:"#",allow:true,priority:-1}]));bindAclRemove()};
  $("#saveRole").onclick=async e=>{e.preventDefault();let acls=$$("#aclRows [data-aclrow]").map(row=>({acltype:row.querySelector("[data-acltype]").value,topic:row.querySelector("[data-topic]").value,allow:row.querySelector("[data-allow]").value==="true",priority:+row.querySelector("[data-apriority]").value}));let cmd={command:isNew?"createRole":"modifyRole",rolename:$("#eRole").value.trim(),textname:$("#eTextName").value,textdescription:$("#eDesc").value,acls};try{await dynsec(cmd);toast("Role saved");$("#editorDialog").close();await Promise.all([loadRoles(),loadClients(),loadGroups()]);renderAll()}catch(ex){toast(ex.message,true)}}
 }
