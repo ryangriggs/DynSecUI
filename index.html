@@ -42,6 +42,7 @@
         <button data-tab="roles">Roles</button>
         <button data-tab="defaults">Defaults</button>
         <button data-tab="raw">Raw API</button>
+        <button data-tab="log">Log</button>
       </nav>
 
       <div id="clients" class="tab active">
@@ -103,6 +104,15 @@
           <h3>Response</h3>
           <pre id="rawResponse">No response yet.</pre>
         </div>
+      </div>
+
+      <div id="log" class="tab">
+        <div class="toolbar">
+          <div><h2>MQTT Traffic Log</h2><span class="muted">Commands published and responses received during this browser session</span></div>
+          <button id="clearLogBtn" class="ghost">Clear log</button>
+        </div>
+        <p class="hint">Payloads may contain passwords or other sensitive values. Each Copy button copies the payload so it can be pasted into Raw API and edited.</p>
+        <div id="trafficLog"><div class="panel muted">No MQTT traffic yet.</div></div>
       </div>
     </div>
   </section>

@@ -28,6 +28,7 @@ A static browser UI for Mosquitto's Dynamic Security plugin.
 - Default ACL access management.
 - Anonymous group management.
 - Raw API panel for sending any Dynamic Security command not represented by the forms.
+- Session traffic log for inspecting and copying every published command and subscribed response.
 
 ## Run
 

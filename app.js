@@ -3,7 +3,7 @@
 const CONTROL="$CONTROL/dynamic-security/v1", RESPONSE=CONTROL+"/response";
 const ACL_TYPES=["publishClientSend","publishClientReceive","subscribeLiteral","subscribePattern","unsubscribeLiteral","unsubscribePattern"];
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-let mqttClient=null, activeConn=null, pending=[], state={clients:[],groups:[],roles:[],defaults:{},anonymousGroup:null};
+let mqttClient=null, activeConn=null, pending=[], trafficLog=[], state={clients:[],groups:[],roles:[],defaults:{},anonymousGroup:null};
 
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function toast(msg,err=false){const e=$("#toast");e.textContent=msg;e.className=err?"show error":"show";clearTimeout(e._t);e._t=setTimeout(()=>e.className="",3500);}
@@ -11,6 +11,10 @@ function saved(){try{return JSON.parse(localStorage.getItem("dynsec.connections"
 function saveConns(v){localStorage.setItem("dynsec.connections",JSON.stringify(v))}
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(16).slice(2)}
 function setStatus(s,t){$("#statusDot").className="dot "+s;$("#statusText").textContent=t;$("#disconnectBtn").disabled=s!=="on"}
+function readablePayload(payload){const text=typeof payload==="string"?payload:payload.toString();try{return JSON.stringify(JSON.parse(text),null,2)}catch{return text}}
+function logTraffic(direction,topic,payload){trafficLog.unshift({id:uid(),direction,topic,payload:readablePayload(payload),time:new Date(),connection:activeConn?.name||""});if(trafficLog.length>500)trafficLog.length=500;renderTrafficLog()}
+function renderTrafficLog(){const list=$("#trafficLog");if(!list)return;list.innerHTML=trafficLog.length?trafficLog.map(entry=>`<article class="log-entry"><div class="log-head"><span class="log-direction ${entry.direction}">${entry.direction==="out"?"PUBLISH":"RECEIVED"}</span><time datetime="${entry.time.toISOString()}">${esc(entry.time.toLocaleTimeString())}</time><span class="log-topic">${esc(entry.connection?entry.connection+" · ":"")}${esc(entry.topic)}</span><button class="ghost" data-copy-log="${entry.id}">Copy payload</button></div><pre>${esc(entry.payload)}</pre></article>`).join(""):'<div class="panel muted">No MQTT traffic yet.</div>';$$('[data-copy-log]').forEach(button=>button.onclick=()=>copyLogPayload(button.dataset.copyLog))}
+async function copyLogPayload(id){const entry=trafficLog.find(item=>item.id===id);if(!entry)return;try{await navigator.clipboard.writeText(entry.payload);toast("Payload copied")}catch{const area=document.createElement("textarea");area.value=entry.payload;area.style.position="fixed";area.style.opacity="0";document.body.append(area);area.select();const copied=document.execCommand("copy");area.remove();toast(copied?"Payload copied":"Could not copy payload",!copied)}}
 
 function renderConnections(){
  const list=$("#connectionList"), cs=saved();
@@ -41,7 +45,7 @@ function connect(password){
  const o={username:activeConn.username||undefined,password:password||undefined,clientId:activeConn.clientId||("dynsec-web-"+Math.random().toString(16).slice(2,10)),protocolVersion:activeConn.protocolVersion||4,clean:true,reconnectPeriod:0,connectTimeout:10000};
  try{mqttClient=mqtt.connect(activeConn.url,o)}catch(e){setStatus("off","Disconnected");toast(e.message,true);return}
  mqttClient.on("connect",()=>mqttClient.subscribe(RESPONSE,{qos:1},err=>{if(err){toast("Failed to subscribe to DynSec responses: "+err.message,true);return}setStatus("on",activeConn.name);$("#welcome").classList.add("hidden");$("#app").classList.remove("hidden");renderConnections();refreshAll()}));
- mqttClient.on("message",(topic,payload)=>{if(topic!==RESPONSE)return;let obj;try{obj=JSON.parse(payload.toString())}catch{return}handleResponse(obj)});
+ mqttClient.on("message",(topic,payload)=>{logTraffic("in",topic,payload);if(topic!==RESPONSE)return;let obj;try{obj=JSON.parse(payload.toString())}catch{return}handleResponse(obj)});
  mqttClient.on("error",e=>toast("MQTT: "+e.message,true));
  mqttClient.on("close",()=>{if($("#statusDot").classList.contains("on"))toast("Broker connection closed",true);setStatus("off","Disconnected")});
 }
@@ -53,7 +57,7 @@ function dynsec(commands,timeout=8000){
  return new Promise((resolve,reject)=>{
    const timer=setTimeout(()=>{pending=pending.filter(p=>p.token!==token);reject(new Error("Timed out waiting for Dynamic Security response"))},timeout);
    pending.push({token,resolve,reject,timer});
-   mqttClient.publish(CONTROL,JSON.stringify({commands:cmds}),{qos:1},err=>{if(err){clearTimeout(timer);pending=pending.filter(p=>p.token!==token);reject(err)}})
+   const payload=JSON.stringify({commands:cmds});logTraffic("out",CONTROL,payload);mqttClient.publish(CONTROL,payload,{qos:1},err=>{if(err){clearTimeout(timer);pending=pending.filter(p=>p.token!==token);reject(err)}})
  });
 }
 function handleResponse(obj){
@@ -140,6 +144,7 @@ $$("[data-refresh]").forEach(b=>b.onclick=async()=>{try{let x=b.dataset.refresh;
 $$(".tabs button").forEach(b=>b.onclick=()=>{$$(".tabs button").forEach(x=>x.classList.toggle("active",x===b));$$(".tab").forEach(t=>t.classList.toggle("active",t.id===b.dataset.tab))});
 $("#formatRawBtn").onclick=()=>{try{$("#rawCommand").value=JSON.stringify(JSON.parse($("#rawCommand").value),null,2)}catch(e){toast("Invalid JSON: "+e.message,true)}};
 $("#sendRawBtn").onclick=async()=>{try{let obj=JSON.parse($("#rawCommand").value);if(!obj.commands||!Array.isArray(obj.commands))throw new Error('Top-level object must contain a "commands" array');let r=await dynsec(obj.commands);$("#rawResponse").textContent=JSON.stringify(r,null,2)}catch(e){$("#rawResponse").textContent=e.message;toast(e.message,true)}};
+$("#clearLogBtn").onclick=()=>{trafficLog=[];renderTrafficLog()};
 
 renderConnections();setStatus("off","Disconnected");
 })();
