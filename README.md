@@ -2,6 +2,8 @@
 
 A static browser UI for Mosquitto's Dynamic Security plugin.
 
+**[Run DynSecUI online](https://ryangriggs.github.io/DynSecUI/)**
+
 ## Features
 
 - Static HTML/CSS/JavaScript; no backend or database.

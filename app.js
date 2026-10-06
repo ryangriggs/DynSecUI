@@ -34,7 +34,7 @@ $("#connForm").addEventListener("submit",e=>{
  let i=cs.findIndex(x=>x.id===id);if(i>=0)cs[i]=c;else cs.push(c);saveConns(cs);$("#connDialog").close();renderConnections();
 });
 function promptConnect(id){activeConn=saved().find(c=>c.id===id);if(!activeConn)return;if(Object.hasOwn(activeConn,"password")){connect(activeConn.password);return}$("#passwordConnectionLabel").textContent=`${activeConn.name} — ${activeConn.url}`;$("#connectPassword").value="";$("#passwordDialog").showModal();setTimeout(()=>$("#connectPassword").focus(),50)}
-$("#passwordForm").addEventListener("submit",e=>{if(e.submitter?.value==="cancel")return;e.preventDefault();$("#passwordDialog").close();connect($("#connectPassword").value)});
+$("#passwordForm").addEventListener("submit",e=>{if(e.submitter?.value==="cancel")return;e.preventDefault();const password=$("#connectPassword").value;activeConn.password=password;saveConns(saved().map(c=>c.id===activeConn.id?activeConn:c));$("#passwordDialog").close();connect(password)});
 function connect(password){
  if(mqttClient) try{mqttClient.end(true)}catch{}
  setStatus("wait","Connecting…");

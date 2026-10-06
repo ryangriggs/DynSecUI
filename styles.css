@@ -6,9 +6,10 @@
 header{height:72px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 22px;position:sticky;top:0;z-index:5}
 h1{font-size:20px;margin:0} h2{margin:0 0 4px;font-size:19px} h3{margin:0 0 12px}.subtitle,.muted,.hint{color:var(--muted);font-size:13px}
 .statusbar{display:flex;align-items:center;gap:9px}.dot{width:10px;height:10px;border-radius:50%;background:#aaa}.dot.on{background:var(--ok)}.dot.off{background:#999}.dot.wait{background:#d69e00}
-main{display:grid;grid-template-columns:255px 1fr;min-height:calc(100vh - 72px)}
+main{display:grid;grid-template-columns:255px 1fr;min-height:calc(100vh - 120px)}
 aside{background:#fff;border-right:1px solid var(--line);padding:16px}.aside-head,.toolbar,.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.aside-head{margin-bottom:12px}
 .content{padding:22px;max-width:1500px;width:100%}.panel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:var(--shadow);margin-bottom:16px}.hero{max-width:700px}
+footer{min-height:48px;background:#fff;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;padding:10px 22px;color:var(--muted);font-size:13px;text-align:center}footer a{color:var(--blue)}footer a:hover{color:var(--blue2)}
 button{border:0;border-radius:5px;background:var(--blue);color:#fff;padding:8px 12px;font-weight:600;cursor:pointer}button:hover{background:var(--blue2)}button.ghost{background:#edf2f6;color:#243746}button.danger{background:#fee4e2;color:var(--danger)}button:disabled{opacity:.45;cursor:not-allowed}
 .connection{border:1px solid var(--line);border-radius:7px;padding:11px;margin:8px 0;background:#fff}.connection.active{border-color:var(--blue);box-shadow:0 0 0 2px #1769aa18}.connection-title{font-weight:700}.connection-url{font-size:11px;color:var(--muted);word-break:break-all;margin:4px 0 9px}.connection-actions{display:flex;gap:6px;flex-wrap:wrap}.connection-actions button{font-size:12px;padding:6px 8px}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px}.tabs button{background:transparent;color:var(--muted);border-radius:0;padding:10px 14px}.tabs button.active{color:var(--blue);border-bottom:3px solid var(--blue)}
