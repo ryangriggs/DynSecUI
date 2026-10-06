@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mosquitto Dynamic Security Admin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>Mosquitto Dynamic Security</h1>
+    <div class="subtitle">Static browser admin UI</div>
+  </div>
+  <div class="statusbar">
+    <span id="statusDot" class="dot off"></span>
+    <span id="statusText">Disconnected</span>
+    <button id="disconnectBtn" class="ghost" disabled>Disconnect</button>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <div class="aside-head">
+      <h2>Connections</h2>
+      <button id="newConnBtn">+ New</button>
+    </div>
+    <div id="connectionList"></div>
+  </aside>
+
+  <section class="content">
+    <div id="welcome" class="panel hero">
+      <h2>Connect to a Mosquitto broker</h2>
+      <p>Create a WebSocket connection on the left. Saved connection details, including passwords, are stored in this browser's localStorage.</p>
+      <p class="hint">The broker must expose a <code>ws://</code> or <code>wss://</code> listener and the account must have access to <code>$CONTROL/dynamic-security/#</code>.</p>
+    </div>
+
+    <div id="app" class="hidden">
+      <nav class="tabs">
+        <button data-tab="clients" class="active">Clients</button>
+        <button data-tab="groups">Groups</button>
+        <button data-tab="roles">Roles</button>
+        <button data-tab="defaults">Defaults</button>
+        <button data-tab="raw">Raw API</button>
+      </nav>
+
+      <div id="clients" class="tab active">
+        <div class="toolbar">
+          <div><h2>Clients</h2><span class="muted">DynSec usernames / MQTT identities</span></div>
+          <div><button data-refresh="clients" class="ghost">Refresh</button><button id="addClientBtn">+ Client</button></div>
+        </div>
+        <div id="clientsTable"></div>
+      </div>
+
+      <div id="groups" class="tab">
+        <div class="toolbar">
+          <div><h2>Groups</h2><span class="muted">Collections of clients with shared roles</span></div>
+          <div><button data-refresh="groups" class="ghost">Refresh</button><button id="addGroupBtn">+ Group</button></div>
+        </div>
+        <div id="groupsTable"></div>
+      </div>
+
+      <div id="roles" class="tab">
+        <div class="toolbar">
+          <div><h2>Roles</h2><span class="muted">ACL collections assignable to clients and groups</span></div>
+          <div><button data-refresh="roles" class="ghost">Refresh</button><button id="addRoleBtn">+ Role</button></div>
+        </div>
+        <div id="rolesTable"></div>
+      </div>
+
+      <div id="defaults" class="tab">
+        <div class="toolbar">
+          <div><h2>Default ACL Access</h2><span class="muted">Applied when no matching ACL exists</span></div>
+          <button data-refresh="defaults" class="ghost">Refresh</button>
+        </div>
+        <div id="defaultAclPanel" class="panel"></div>
+        <div class="panel">
+          <h3>Anonymous Group</h3>
+          <div class="row">
+            <select id="anonymousGroup"></select>
+            <button id="saveAnonymousBtn">Save</button>
+          </div>
+          <p class="hint">Choose the group automatically assigned to anonymous clients, or select None.</p>
+        </div>
+      </div>
+
+      <div id="raw" class="tab">
+        <div class="toolbar">
+          <div><h2>Raw Dynamic Security API</h2><span class="muted">Send any supported command directly</span></div>
+        </div>
+        <div class="panel">
+          <textarea id="rawCommand" spellcheck="false">{
+  "commands": [
+    {
+      "command": "getDefaultACLAccess"
+    }
+  ]
+}</textarea>
+          <div class="row">
+            <button id="sendRawBtn">Send</button>
+            <button id="formatRawBtn" class="ghost">Format JSON</button>
+          </div>
+          <h3>Response</h3>
+          <pre id="rawResponse">No response yet.</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="connDialog">
+  <form method="dialog" id="connForm">
+    <h2 id="connDialogTitle">Connection</h2>
+    <input type="hidden" id="connId">
+    <label>Name <input id="connName" required placeholder="Production broker"></label>
+    <label>WebSocket URL <input id="connUrl" required placeholder="wss://mqtt.example.com:8083/mqtt"></label>
+    <label>Username <input id="connUsername" autocomplete="username" placeholder="admin"></label>
+    <label>Password <input id="connPassword" type="password" autocomplete="current-password"></label>
+    <p class="hint">The password is saved unencrypted in this browser's localStorage. Only use this UI on a trusted device.</p>
+    <label>Client ID <input id="connClientId" placeholder="dynsec-web-..."></label>
+    <label>MQTT version
+      <select id="connVersion">
+        <option value="4">3.1.1</option>
+        <option value="5">5.0</option>
+      </select>
+    </label>
+    <div class="dialog-actions">
+      <button value="cancel" class="ghost">Cancel</button>
+      <button id="saveConnBtn" value="default">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="passwordDialog">
+  <form method="dialog" id="passwordForm">
+    <h2>Connect</h2>
+    <div id="passwordConnectionLabel" class="muted"></div>
+    <label>Password <input id="connectPassword" type="password" autocomplete="current-password"></label>
+    <div class="dialog-actions">
+      <button value="cancel" class="ghost">Cancel</button>
+      <button id="doConnectBtn" value="default">Connect</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="editorDialog" class="wide">
+  <form method="dialog" id="editorForm">
+    <div class="toolbar compact">
+      <h2 id="editorTitle">Edit</h2>
+      <button value="cancel" class="ghost">Close</button>
+    </div>
+    <div id="editorBody"></div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/mqtt@5.16.0/dist/mqtt.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
