@@ -77,6 +77,20 @@ to:
 
 No package manager or build step is required.
 
+## Versioning
+
+The displayed version is read from the `APP_VERSION` constant near the top of `app.js`. A tracked pre-commit hook increments its patch number and stages the update as part of each local commit.
+
+Enable the hook once after cloning:
+
+    git config core.hooksPath .githooks
+
+On macOS or Linux, also ensure the hook is executable:
+
+    chmod +x .githooks/pre-commit
+
+The hook requires Node.js. It stops without changing the version if `app.js` has unstaged edits, preventing unrelated changes from being staged accidentally. As with all Git hooks, it can be bypassed with `git commit --no-verify`.
+
 ## Mosquitto permissions
 
 The administration account must be permitted to publish to and receive/subscribe from:

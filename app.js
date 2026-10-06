@@ -1,5 +1,6 @@
 (() => {
 "use strict";
+const APP_VERSION="1.0.1";
 const CONTROL="$CONTROL/dynamic-security/v1", RESPONSE=CONTROL+"/response";
 const ACL_TYPES=["publishClientSend","publishClientReceive","subscribeLiteral","subscribePattern","unsubscribeLiteral","unsubscribePattern"];
 const DEFAULT_TOPIC_FILTERS=["#","$SYS/#"];
@@ -174,5 +175,5 @@ $("#subscriptionFilter").addEventListener("keydown",event=>{if(event.key==="Ente
 $("#clearTopicsBtn").onclick=()=>{topicMessages.clear();selectedTopic=null;renderTopicBrowser()};
 $("#publishTopicBtn").onclick=()=>{if(!mqttClient?.connected){toast("Not connected",true);return}const topic=$("#publishTopic").value.trim(),payload=$("#publishPayload").value,qos=+$("#publishQos").value,retain=$("#publishRetain").checked;if(!validPublishTopic(topic)){toast("Enter a valid publish topic without wildcards",true);return}logTraffic("out",topic,payload,{qos,retain});mqttClient.publish(topic,payload,{qos,retain},err=>toast(err?"Publish failed: "+err.message:"Message published",!!err))};
 
-renderConnections();renderSubscriptions();renderTopicBrowser();setStatus("off","Disconnected");
+$("#appVersion").textContent=`DynSecUI v${APP_VERSION}`;renderConnections();renderSubscriptions();renderTopicBrowser();setStatus("off","Disconnected");
 })();
