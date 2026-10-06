@@ -1,6 +1,6 @@
 (() => {
 "use strict";
-const APP_VERSION="1.0.1";
+const APP_VERSION="1.0.2";
 const CONTROL="$CONTROL/dynamic-security/v1", RESPONSE=CONTROL+"/response";
 const ACL_TYPES=["publishClientSend","publishClientReceive","subscribeLiteral","subscribePattern","unsubscribeLiteral","unsubscribePattern"];
 const DEFAULT_TOPIC_FILTERS=["#","$SYS/#"];
@@ -16,6 +16,7 @@ function loadTopicFilters(){try{const value=localStorage.getItem("dynsec.topicFi
 function saveTopicFilters(){localStorage.setItem("dynsec.topicFilters",JSON.stringify(topicFilters))}
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(16).slice(2)}
 function setStatus(s,t){$("#statusDot").className="dot "+s;$("#statusText").textContent=t;$("#disconnectBtn").disabled=s!=="on"}
+function setConnecting(waiting){$("#connectionWaitText").textContent=activeConn?`Connecting to ${activeConn.name}…`:"Connecting…";$("#connectionOverlay").classList.toggle("hidden",!waiting)}
 function readablePayload(payload){const text=typeof payload==="string"?payload:payload.toString();try{return JSON.stringify(JSON.parse(text),null,2)}catch{return text}}
 function logTraffic(direction,topic,payload,meta={}){if(mutedLogTopics.has(topic))return;trafficLog.push({id:uid(),direction,topic,payload:readablePayload(payload),qos:meta.qos??0,retain:!!meta.retain,time:new Date(),connection:activeConn?.name||""});if(trafficLog.length>500)trafficLog.shift();scheduleLogRender()}
 function scheduleLogRender(){if(logRenderPending)return;logRenderPending=true;requestAnimationFrame(()=>{logRenderPending=false;renderTrafficLog()})}
@@ -62,17 +63,18 @@ $("#connForm").addEventListener("submit",e=>{
 function promptConnect(id){activeConn=saved().find(c=>c.id===id);if(!activeConn)return;if(Object.hasOwn(activeConn,"password")){connect(activeConn.password);return}$("#passwordConnectionLabel").textContent=`${activeConn.name} — ${activeConn.url}`;$("#connectPassword").value="";$("#passwordDialog").showModal();setTimeout(()=>$("#connectPassword").focus(),50)}
 $("#passwordForm").addEventListener("submit",e=>{if(e.submitter?.value==="cancel")return;e.preventDefault();const password=$("#connectPassword").value;activeConn.password=password;saveConns(saved().map(c=>c.id===activeConn.id?activeConn:c));$("#passwordDialog").close();connect(password)});
 function connect(password){
- if(mqttClient) try{mqttClient.end(true)}catch{}
+ const previous=mqttClient;mqttClient=null;if(previous)try{previous.end(true)}catch{}
+ if(location.protocol==="https:"&&/^ws:\/\//i.test(activeConn.url)){setStatus("off","Disconnected");setConnecting(false);toast("Browsers block ws:// from HTTPS. Serve DynSecUI over http:// for this local connection, or enable wss:// on the broker.",true);return}
  topicMessages.clear();selectedTopic=null;renderTopicBrowser();
- setStatus("wait","Connecting…");
+ setStatus("wait","Connecting…");setConnecting(true);
  const o={username:activeConn.username||undefined,password:password||undefined,clientId:activeConn.clientId||("dynsec-web-"+Math.random().toString(16).slice(2,10)),protocolVersion:activeConn.protocolVersion||4,clean:true,reconnectPeriod:0,connectTimeout:10000};
- try{mqttClient=mqtt.connect(activeConn.url,o)}catch(e){setStatus("off","Disconnected");toast(e.message,true);return}
- mqttClient.on("connect",()=>mqttClient.subscribe(RESPONSE,{qos:1},err=>{if(err){toast("Failed to subscribe to DynSec responses: "+err.message,true);return}setStatus("on",activeConn.name);$("#welcome").classList.add("hidden");$("#app").classList.remove("hidden");renderConnections();subscribeTopicFilters();refreshAll()}));
- mqttClient.on("message",(topic,payload,packet)=>{recordTopicMessage(topic,payload,packet);logTraffic("in",topic,payload,{qos:packet?.qos,retain:packet?.retain});if(topic!==RESPONSE)return;let obj;try{obj=JSON.parse(payload.toString())}catch{return}handleResponse(obj)});
- mqttClient.on("error",e=>toast("MQTT: "+e.message,true));
- mqttClient.on("close",()=>{if($("#statusDot").classList.contains("on"))toast("Broker connection closed",true);setStatus("off","Disconnected")});
+ let client;try{client=mqtt.connect(activeConn.url,o);mqttClient=client}catch(e){setConnecting(false);setStatus("off","Disconnected");toast(e.message,true);return}
+ client.on("connect",()=>{if(mqttClient!==client)return;client.subscribe(RESPONSE,{qos:1},err=>{if(mqttClient!==client)return;if(err){setConnecting(false);setStatus("off","Disconnected");toast("Failed to subscribe to DynSec responses: "+err.message,true);mqttClient=null;client.end(true);return}setConnecting(false);setStatus("on",activeConn.name);$("#welcome").classList.add("hidden");$("#app").classList.remove("hidden");renderConnections();subscribeTopicFilters();refreshAll()})});
+ client.on("message",(topic,payload,packet)=>{if(mqttClient!==client)return;recordTopicMessage(topic,payload,packet);logTraffic("in",topic,payload,{qos:packet?.qos,retain:packet?.retain});if(topic!==RESPONSE)return;let obj;try{obj=JSON.parse(payload.toString())}catch{return}handleResponse(obj)});
+ client.on("error",e=>{if(mqttClient!==client)return;setConnecting(false);toast("MQTT: "+e.message,true)});
+ client.on("close",()=>{if(mqttClient!==client)return;setConnecting(false);mqttClient=null;if($("#statusDot").classList.contains("on"))toast("Broker connection closed",true);setStatus("off","Disconnected")});
 }
-$("#disconnectBtn").onclick=()=>{if(mqttClient)mqttClient.end(true);mqttClient=null;setStatus("off","Disconnected");renderConnections()};
+$("#disconnectBtn").onclick=()=>{const client=mqttClient;mqttClient=null;if(client)client.end(true);setConnecting(false);setStatus("off","Disconnected");renderConnections()};
 
 function dynsec(commands,timeout=8000){
  if(!mqttClient?.connected)return Promise.reject(new Error("Not connected"));

@@ -169,6 +169,7 @@
     <input type="hidden" id="connId">
     <label>Name <input id="connName" required placeholder="Production broker"></label>
     <label>WebSocket URL <input id="connUrl" required placeholder="wss://mqtt.example.com:8083/mqtt"></label>
+    <p class="hint"><code>ws://</code> is supported when this page is served over <code>http://</code>. Browsers block <code>ws://</code> connections from an HTTPS page.</p>
     <label>Username <input id="connUsername" autocomplete="username" placeholder="admin"></label>
     <label>Password <input id="connPassword" type="password" autocomplete="current-password"></label>
     <p class="hint">The password is saved unencrypted in this browser's localStorage. Only use this UI on a trusted device.</p>
@@ -209,6 +210,14 @@
 </dialog>
 
 <div id="toast"></div>
+
+<div id="connectionOverlay" class="connection-overlay hidden" role="status" aria-live="polite" aria-busy="true">
+  <div class="connection-wait">
+    <span class="spinner" aria-hidden="true"></span>
+    <strong id="connectionWaitText">Connecting…</strong>
+    <span class="muted">Please wait</span>
+  </div>
+</div>
 
 <script src="https://unpkg.com/mqtt@5.16.0/dist/mqtt.min.js"></script>
 <script src="app.js"></script>
