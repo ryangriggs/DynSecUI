@@ -1,6 +1,6 @@
 (() => {
 "use strict";
-const APP_VERSION="1.0.2";
+const APP_VERSION="1.0.3";
 const CONTROL="$CONTROL/dynamic-security/v1", RESPONSE=CONTROL+"/response";
 const ACL_TYPES=["publishClientSend","publishClientReceive","subscribeLiteral","subscribePattern","unsubscribeLiteral","unsubscribePattern"];
 const DEFAULT_TOPIC_FILTERS=["#","$SYS/#"];
